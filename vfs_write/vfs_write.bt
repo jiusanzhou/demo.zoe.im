@@ -1,0 +1,38 @@
+#!/usr/bin/env bpftrace
+#
+#include <linux/fs.h>
+#include <linux/file.h>
+#include <linux/path.h>
+#include <linux/dcache.h>
+
+BEGIN {
+  printf("Welcome to bpf log sink!\n");
+}
+
+tracepoint:syscalls:sys_enter_sendto {
+  printf("%s: %r\n", comm, buf(args->buff, args->len));
+}
+
+kprobe:vfs_write /1==0&&comm != "bpftrace" && comm != "sshd"/ {
+  $file = (struct file *)arg0;
+  $name = str($file->f_path.dentry->d_name.name);
+  // $path = path($file->f_path);
+  if ($name == "" || 
+    $name == "[eventfd]" ||
+    $name == "UNIX" || 
+    $name == "TCP" || 
+    $name == "TCPv6") {
+
+    return;
+  }
+
+  $cur = $file->f_path.dentry;
+  $data = buf(arg1, arg2);
+  printf("%s: [%s] => %r\n", comm, $name, $data);
+}
+
+END
+{
+  printf("Goodbye\n");
+	// clear(@files);
+}
